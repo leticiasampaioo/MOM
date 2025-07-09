@@ -2,9 +2,9 @@ import tkinter as tk
 from tkinter import scrolledtext, messagebox
 import threading
 import os
-import time  # Adicionado para timestamps nos logs
-import pika  # Adicionado para tratar exceções específicas do RabbitMQ
-from user_client import Usuario # Importa a classe Usuario
+import time
+import pika
+from user_client import Usuario
 
 class App:
     def __init__(self, root):
@@ -16,6 +16,8 @@ class App:
         self.topicos_assinados = set()
         self.topico_selecionado = None
         self.usuario_selecionado = None
+        self.mensagens_privadas = {}
+        self.conversa_privada_atual = None
 
         self.configurar_interface()
 
@@ -41,14 +43,18 @@ class App:
         esquerda_frame = tk.Frame(conteudo_frame)
         esquerda_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5)
 
-        usuarios_frame = tk.LabelFrame(esquerda_frame, text="Usuários Online")
+        usuarios_frame = tk.LabelFrame(esquerda_frame, text="Usuários")
         usuarios_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-        self.lista_usuarios = tk.Listbox(usuarios_frame, width=25, height=15)
+        self.lista_usuarios = tk.Listbox(usuarios_frame, width=25, height=10)
         self.lista_usuarios.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.lista_usuarios.bind('<<ListboxSelect>>', self.selecionar_usuario)
 
         privado_frame = tk.LabelFrame(esquerda_frame, text="Mensagem Privada")
         privado_frame.pack(fill=tk.X, pady=5)
+
+        self.caixa_mensagens_privadas = scrolledtext.ScrolledText(privado_frame, height=8, state='disabled', bg="white")
+        self.caixa_mensagens_privadas.pack(fill=tk.X, padx=5, pady=5)
+
         tk.Label(privado_frame, text="Para:").pack(anchor='w')
         self.entrada_destinatario = tk.Entry(privado_frame)
         self.entrada_destinatario.pack(fill=tk.X, padx=5, pady=2)
@@ -101,7 +107,7 @@ class App:
 
         if self.usuario is not None:
             messagebox.showinfo("Info", f"Você já está conectado como {self.usuario.nome}.")
-            return # Não registra, pois não é uma ação de comunicação/tópico/criação
+            return
 
         try:
             self.usuario = Usuario(nome)
@@ -140,10 +146,8 @@ class App:
 
         self.entrada_nome.config(state='readonly')
 
-        # Carrega tópicos, mas não registra INFO sobre "carregado do arquivo" no log de atividades
         self.carregar_topicos_assinados()
 
-        # Atualiza listas, mas não registra INFO no log de atividades
         self.listar_topicos()
         self.atualizar_lista_usuarios()
 
@@ -156,14 +160,12 @@ class App:
             self.botao_publicar_mural.config(state='disabled')
             self.caixa_mural.config(state='disabled')
 
-
         self.root.after(5000, self.atualizacoes_periodicas)
 
     def _on_closing(self):
         """Chamado quando a janela é fechada para garantir o fechamento da conexão."""
         if self.usuario:
-            # self.usuario.consume_connection.close() # Comentado pois o __del__ já cuida disso
-            self.registrar("INFO: Fechando conexão do usuário ao sair.") # Este log é importante
+            self.registrar("INFO: Fechando conexão do usuário ao sair.")
             del self.usuario
         self.root.destroy()
 
@@ -179,12 +181,10 @@ class App:
                             sucesso = self.usuario.assinar_topico(topico)
                             if sucesso:
                                 self.topicos_assinados.add(topico)
-                                # Não registra re-assinatura individual no log de atividades, apenas para comunicação
                             else:
                                 self.registrar(f"AVISO: Falha ao re-assinar o tópico: {topico}")
             except Exception as e:
                 self.registrar(f"ERRO: Erro ao carregar tópicos assinados do arquivo: {e}")
-        # else: Não registra se não encontrou arquivo de tópicos
 
     def salvar_topicos_assinados(self):
         """Salva a lista de tópicos assinados em um arquivo local."""
@@ -193,7 +193,6 @@ class App:
                 with open(f"{self.usuario.nome}_topicos_assinados.txt", "w", encoding="utf-8") as f:
                     for t in self.topicos_assinados:
                         f.write(t + "\n")
-                # Não registra "salvo com sucesso" no log de atividades, apenas para comunicação
             except Exception as e:
                 self.registrar(f"ERRO: Erro ao salvar tópicos assinados: {e}")
 
@@ -225,8 +224,8 @@ class App:
             if novo_topico:
                 if self.usuario.publicar_em_topico(novo_topico, "Novo tópico criado!"):
                     messagebox.showinfo("Sucesso", f"Tópico '{novo_topico}' criado e mensagem inicial publicada.")
-                    self.registrar(f"INFO: Tópico '{novo_topico}' criado.") # Loga a criação
-                    self.listar_topicos()
+                    self.registrar(f"INFO: Tópico '{novo_topico}' criado.")
+                    self.assinar_topico(novo_topico)
                     dialog.destroy()
                 else:
                     messagebox.showerror("Erro", f"Não foi possível criar ou publicar no tópico '{novo_topico}'.")
@@ -259,30 +258,29 @@ class App:
             entrada = tk.Entry(frame, width=25)
             entrada.insert(0, topico)
             entrada.config(state='readonly')
-            if topico in self.topicos_assinados:
-                entrada.config(bg="#b2f0c2") # Verde claro
-            entrada.pack(side=tk.LEFT)
 
             if topico in self.topicos_assinados:
+                entrada.config(bg="#b2f0c2") # Verde claro
                 texto_botao = "Visualizar"
                 comando = lambda t=topico: self.visualizar_mural(t)
             else:
+                entrada.config(bg="white") # Cor padrão, corrigido do SystemButtonFace
                 texto_botao = "Assinar"
                 comando = lambda t=topico: self.assinar_topico(t)
 
+            entrada.pack(side=tk.LEFT)
             tk.Button(frame, text=texto_botao, bg="#4da6ff", command=comando).pack(side=tk.LEFT, padx=5)
 
     def assinar_topico(self, topico):
         """Assina um tópico."""
         if not self.usuario:
-            return # AVISO já é feito em criar_novo_topico_dialog se for o caso
+            return
 
         try:
             sucesso = self.usuario.assinar_topico(topico)
             if sucesso:
                 self.topicos_assinados.add(topico)
                 self.salvar_topicos_assinados()
-                # Não registra "Assinado ao tópico" no log de atividades para manter o foco
                 self.listar_topicos()
                 self.visualizar_mural(topico)
             else:
@@ -310,10 +308,8 @@ class App:
             with open(f"{topico}.txt", "r", encoding="utf-8") as f:
                 for msg in f.readlines():
                     self.caixa_mural.insert(tk.END, msg)
-            # Não registra "Mural carregado do arquivo" no log de atividades
         except FileNotFoundError:
             self.caixa_mural.insert(tk.END, f"[{topico}] Nenhuma mensagem anterior neste mural.\n")
-            # Não registra "Arquivo de mural não encontrado" no log de atividades
 
         self.caixa_mural.config(state='disabled')
         self.caixa_mural.yview(tk.END)
@@ -325,7 +321,6 @@ class App:
             messagebox.showinfo("Tópico Atual", f"Você está visualizando o tópico: '{self.topico_selecionado}'")
         else:
             messagebox.showinfo("Tópico Atual", "Nenhum tópico selecionado. Assine ou crie um.")
-        # Não registra esta ação no log de atividades
 
     def publicar_no_topico(self):
         """Publica uma mensagem no tópico selecionado."""
@@ -353,10 +348,8 @@ class App:
             self.registrar(f"ERRO: Erro inesperado ao publicar no tópico: {e}")
             return
 
-        mensagem_formatada_local = f"[{topico}]{self.usuario.nome}: {mensagem}"
-        self._adicionar_mensagem_mural(topico, mensagem_formatada_local + '\n') # Adiciona ao mural local
         self.entrada_mural.delete(0, tk.END)
-        self.registrar(f"INFO: Mensagem publicada em '{topico}': {mensagem}") # Loga a mensagem publicada
+        self.registrar(f"INFO: Mensagem publicada em '{topico}': {mensagem}")
 
     def atualizar_lista_usuarios(self):
         """Atualiza a lista de usuários online."""
@@ -380,18 +373,31 @@ class App:
                 idx = self.lista_usuarios.get(0, tk.END).index(nome)
                 self.lista_usuarios.selection_set(idx)
             except ValueError:
-                pass # Usuário não está mais na lista ou não foi encontrado
-        # Não registra esta ação no log de atividades
+                pass
 
     def selecionar_usuario(self, event):
         """Define o destinatário da mensagem privada ao selecionar um usuário na lista."""
         selecao = self.lista_usuarios.curselection()
         if selecao:
-            usuario = self.lista_usuarios.get(selecao[0])
+            usuario_selecionado = self.lista_usuarios.get(selecao[0])
             self.entrada_destinatario.delete(0, tk.END)
-            self.entrada_destinatario.insert(0, usuario)
+            self.entrada_destinatario.insert(0, usuario_selecionado)
             self.entrada_msg_privada.focus()
-        # Não registra esta ação no log de atividades
+
+            self.conversa_privada_atual = usuario_selecionado
+            self._carregar_mensagens_privadas(usuario_selecionado)
+
+    def _carregar_mensagens_privadas(self, usuario_para_carregar):
+        """Carrega e exibe as mensagens privadas de um usuário específico."""
+        self.caixa_mensagens_privadas.config(state='normal')
+        self.caixa_mensagens_privadas.delete(1.0, tk.END)
+
+        mensagens = self.mensagens_privadas.get(usuario_para_carregar, [])
+        for msg in mensagens:
+            self.caixa_mensagens_privadas.insert(tk.END, msg + '\n')
+
+        self.caixa_mensagens_privadas.config(state='disabled')
+        self.caixa_mensagens_privadas.yview(tk.END)
 
     def enviar_mensagem_privada(self):
         """Envia uma mensagem privada para o usuário selecionado."""
@@ -406,10 +412,23 @@ class App:
             self.registrar("AVISO: Tentativa de enviar mensagem privada incompleta.")
             return
 
+        # Obter o timestamp atual para a mensagem enviada
+        timestamp = time.strftime("[%H:%M]")
+        mensagem_com_timestamp = f"{timestamp} Você: {mensagem}"
+
         try:
             sucesso = self.usuario.enviar_para_usuario(destinatario, mensagem)
             if sucesso:
-                self.registrar(f"INFO: Você enviou para {destinatario}: {mensagem}") # Loga a mensagem privada enviada
+                # Adiciona a mensagem formatada (com timestamp) ao histórico local
+                if destinatario not in self.mensagens_privadas:
+                    self.mensagens_privadas[destinatario] = []
+                self.mensagens_privadas[destinatario].append(mensagem_com_timestamp)
+
+                # Se estiver conversando com o destinatário, atualiza a caixa de chat privada
+                if self.conversa_privada_atual == destinatario:
+                    self._adicionar_mensagem_privada_ui(mensagem_com_timestamp)
+
+                self.registrar(f"INFO: Você enviou para {destinatario}: {mensagem}")
                 self.entrada_msg_privada.delete(0, tk.END)
             else:
                 self.registrar(f"AVISO: Falha ao enviar mensagem privada para {destinatario}.")
@@ -433,8 +452,19 @@ class App:
         if msg.startswith("PRIVADO:"):
             try:
                 _, remetente, mensagem_conteudo = msg.split(":", 2)
-                mensagem_formatada = f"[PRIVADO DE {remetente}] {mensagem_conteudo}"
-                self.registrar(f"INFO: {mensagem_formatada}") # Loga a mensagem privada recebida
+                timestamp = time.strftime("[%H:%M]") # Adiciona timestamp para mensagens recebidas
+                mensagem_formatada = f"{timestamp} [{remetente}] {mensagem_conteudo}"
+
+                # Armazena a mensagem no histórico local
+                if remetente not in self.mensagens_privadas:
+                    self.mensagens_privadas[remetente] = []
+                self.mensagens_privadas[remetente].append(mensagem_formatada)
+
+                # Se o remetente for o usuário com quem estamos conversando, exibe na UI
+                if self.conversa_privada_atual == remetente:
+                    self._adicionar_mensagem_privada_ui(mensagem_formatada)
+
+                self.registrar(f"INFO: Mensagem privada de '{remetente}': {mensagem_conteudo}")
             except ValueError:
                 self.registrar(f"ERRO: Formato de mensagem privada inválido: {msg}")
         elif msg.startswith("[") and "]" in msg:
@@ -443,31 +473,25 @@ class App:
                 segundo_colchete = msg.index("]")
                 nome_topico = msg[primeiro_colchete + 1 : segundo_colchete]
 
-                # Salva a mensagem no arquivo local do tópico (independentemente de estar selecionado)
                 if nome_topico in self.topicos_assinados:
                     try:
                         with open(f"{nome_topico}.txt", "a", encoding="utf-8") as f:
                             f.write(msg + '\n')
-                        # Não registra "Mensagem de tópico salva no arquivo" no log de atividades
                     except Exception as e:
                         self.registrar(f"ERRO: Erro ao salvar mensagem no arquivo do tópico '{nome_topico}': {e}")
                 else:
-                    self.registrar(f"INFO: Mensagem recebida para tópico não assinado: '{nome_topico}' - {msg}") # Loga se recebeu mas não assinou
+                    self.registrar(f"INFO: Mensagem recebida para tópico não assinado: '{nome_topico}' - {msg}")
 
-
-                # Exibe no mural APENAS se o tópico estiver selecionado atualmente
                 if self.topico_selecionado == nome_topico:
                     self._adicionar_mensagem_mural(nome_topico, msg + '\n')
-                    self.registrar(f"INFO: Mensagem recebida em '{nome_topico}': {msg}") # Loga a mensagem de tópico recebida
+                    self.registrar(f"INFO: Mensagem recebida em '{nome_topico}': {msg}")
                 else:
-                    # Se não for o tópico selecionado, apenas registra no log (o anterior já fez isso)
                     pass
 
             except (ValueError, IndexError):
                  self.registrar(f"ERRO: Formato de mensagem de tópico inválido: {msg}")
         else:
-            # Mensagens de log ou sistema que não são privadas nem de tópico
-            self.registrar(f"INFO: MENSAGEM GERAL RECEBIDA: {msg}") # Loga outras mensagens recebidas
+            self.registrar(f"INFO: MENSAGEM GERAL RECEBIDA: {msg}")
 
     def _adicionar_mensagem_mural(self, topico, mensagem):
         """Adiciona mensagem ao mural (se o tópico estiver selecionado)."""
@@ -476,6 +500,13 @@ class App:
             self.caixa_mural.insert(tk.END, mensagem)
             self.caixa_mural.config(state='disabled')
             self.caixa_mural.yview(tk.END)
+
+    def _adicionar_mensagem_privada_ui(self, mensagem):
+        """Adiciona mensagem à caixa de mensagens privadas."""
+        self.caixa_mensagens_privadas.config(state='normal')
+        self.caixa_mensagens_privadas.insert(tk.END, mensagem + '\n')
+        self.caixa_mensagens_privadas.config(state='disabled')
+        self.caixa_mensagens_privadas.yview(tk.END)
 
     def registrar(self, msg):
         """Registra mensagens no log da interface de forma thread-safe com timestamp."""
