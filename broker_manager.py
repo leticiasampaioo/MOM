@@ -4,17 +4,19 @@ from requests.auth import HTTPBasicAuth
 
 class BrokerManager:
     def __init__(self):
-        self.users = set()
         self.connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         self.channel = self.connection.channel()
         self.api_url = 'http://localhost:15672/api'
         self.auth = HTTPBasicAuth('guest', 'guest')
 
+        # Inicializa o conjunto de usuários com as filas já existentes
+        self.users = set(self.listar_usuarios())
+
     def criar_usuario(self, nome):
         if nome in self.users:
             return f"Usuário '{nome}' já existe."
-        self.users.add(nome)
         self.channel.queue_declare(queue=nome)
+        self.users.add(nome)
         return f"Usuário '{nome}' criado com sucesso."
 
     def remover_usuario(self, nome):
@@ -25,14 +27,20 @@ class BrokerManager:
         return f"Usuário '{nome}' não encontrado."
 
     def listar_usuarios(self):
-        return list(self.users)
+        try:
+            resp = requests.get(f"{self.api_url}/queues", auth=self.auth)
+            resp.raise_for_status()
+            filas = resp.json()
+            nomes_filas = [fila['name'] for fila in filas]
+            return nomes_filas
+        except Exception as e:
+            return [f"Erro ao listar usuários: {e}"]
 
     def criar_topico(self, nome):
         self.channel.exchange_declare(exchange=nome, exchange_type='fanout')
         return f"Tópico '{nome}' criado."
 
     def remover_topico(self, nome):
-        # Evitar remover exchanges de sistema, que geram erro
         if nome.startswith("amq.") or nome == "":
             return f"Remoção do tópico '{nome}' não permitida (exchange do sistema)."
         try:
