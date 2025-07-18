@@ -3,7 +3,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 import json
 import threading
-import time # Importar time para uso no heartbeat
+import time 
 
 class Usuario:
     def __init__(self, nome):
@@ -19,8 +19,9 @@ class Usuario:
         self.consume_channel.queue_declare(queue=nome, durable=True)
         self.consume_channel.queue_declare(queue=f"{nome}_topicos", durable=True) 
 
+    #Estabelece a conexão para consumo de mensagens
     def _conectar_consumidor(self):
-        """Estabelece a conexão para consumo de mensagens."""
+       
         if not self.consume_connection or self.consume_connection.is_closed:
             print(f"[{self.nome}] Conectando consumidor ao RabbitMQ...")
             # Usa ConnectionParameters com heartbeat para detecção de conexão perdida
@@ -30,12 +31,9 @@ class Usuario:
             self.consume_channel = self.consume_connection.channel()
             print(f"[{self.nome}] Consumidor conectado.")
 
+    #Consome mensagens das filas
     def receber_mensagens(self, callback):
-        """
-        Consome mensagens das filas (privadas e de tópicos) e chama o callback
-        para atualizar o mural da interface com a mensagem recebida.
-        Este método DEVE ser executado em sua própria thread.
-        """
+      
         def on_message(ch, method, properties, body):
             try:
                 mensagem = body.decode('utf-8')
@@ -46,9 +44,6 @@ class Usuario:
             except Exception as e:
                 print(f"[{self.nome}] Erro ao processar mensagem no callback: {e}")
 
-        # Configurações básicas de QoS (Quality of Service)
-        # prefetch_count=1 significa que o consumidor só receberá 1 mensagem por vez,
-        # só pegando a próxima após o ack da anterior (útil se você usar ack manual).
         self.consume_channel.basic_qos(prefetch_count=1)
 
         # Configura o consumo de mensagens privadas
@@ -84,18 +79,15 @@ class Usuario:
             self._conectar_consumidor()
             self.receber_mensagens(callback)
 
-
+    #Cria e retorna uma nova conexão e canal para operações de publicação
     def _obter_canal_publicacao(self):
-        """
-        Cria e retorna uma nova conexão e canal para operações de publicação.
-        Cada operação de publicação terá sua própria conexão efêmera.
-        """
+        
         # heartbeat de 60 segundos para as conexões de publicação também.
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost', heartbeat=60))
         return connection, connection.channel()
 
     def enviar_para_usuario(self, destino, mensagem):
-        """Envia mensagem privada diretamente para outro usuário."""
+       
         publish_connection = None
         publish_channel = None
         try:
@@ -119,7 +111,7 @@ class Usuario:
                 publish_connection.close()
 
     def assinar_topico(self, nome_topico):
-        """Assina um tópico e o vincula à fila de tópicos do usuário."""
+        
         publish_connection = None
         publish_channel = None
         try:
@@ -147,7 +139,7 @@ class Usuario:
                 publish_connection.close()
 
     def publicar_em_topico(self, nome_topico, mensagem):
-        """Publica uma mensagem em um tópico para todos os assinantes."""
+    
         publish_connection = None
         publish_channel = None
         try:
@@ -176,7 +168,7 @@ class Usuario:
                 publish_connection.close()
 
     def listar_topicos(self):
-        """Consulta os tópicos disponíveis via API HTTP do RabbitMQ."""
+        
         url = 'http://localhost:15672/api/exchanges/%2F'  # %2F é o vhost padrão "/"
         auth = HTTPBasicAuth('guest', 'guest') # Credenciais padrão do RabbitMQ
         try:
@@ -201,7 +193,7 @@ class Usuario:
             return []
 
     def listar_usuarios(self):
-        """Consulta as filas de usuários (que representam usuários online/registrados)."""
+        
         url = 'http://localhost:15672/api/queues/%2F'
         auth = HTTPBasicAuth('guest', 'guest')
         try:
@@ -225,7 +217,7 @@ class Usuario:
             return []
 
     def __del__(self):
-        """Fecha a conexão de consumo ao destruir o objeto do usuário."""
+       
         if hasattr(self, 'consume_connection') and self.consume_connection:
             try:
                 if not self.consume_connection.is_closed:

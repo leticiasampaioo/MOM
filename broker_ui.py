@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import scrolledtext, messagebox
-from broker_manager import BrokerManager # Certifique-se que o broker_manager.py está no mesmo diretório
+from broker_manager import BrokerManager 
 
 class BrokerInterface:
     def __init__(self, root):
@@ -45,7 +45,7 @@ class BrokerInterface:
         root.grid_columnconfigure(1, weight=1)
 
     def _on_closing(self):
-        """Chamado ao fechar a janela para garantir o fechamento da conexão do broker."""
+       
         if hasattr(self, 'broker') and self.broker: # Verifica se self.broker foi inicializado
             self.broker.close()
         self.root.destroy()
@@ -57,7 +57,7 @@ class BrokerInterface:
             return
         resultado = self.broker.criar_usuario(nome)
         self.saida.insert(tk.END, resultado + "\n")
-        self.saida.see(tk.END) # Rola para o final
+        self.saida.see(tk.END) 
 
     def remover_usuario(self):
         nome = self.usuario_entry.get().strip()
@@ -69,7 +69,7 @@ class BrokerInterface:
         self.saida.see(tk.END)
 
     def listar_usuarios(self):
-        self.saida.delete(1.0, tk.END) # Limpa a saída
+        self.saida.delete(1.0, tk.END) 
         self.saida.insert(tk.END, "Listando Usuários...\n")
         usuarios = self.broker.listar_usuarios()
         self.saida.insert(tk.END, "--- Usuários Ativos ---\n")
@@ -100,7 +100,7 @@ class BrokerInterface:
         self.saida.see(tk.END)
 
     def listar_topicos(self):
-        self.saida.delete(1.0, tk.END) # Limpa a saída
+        self.saida.delete(1.0, tk.END) 
         self.saida.insert(tk.END, "Listando Tópicos...\n")
         topicos = self.broker.listar_topicos()
         self.saida.insert(tk.END, "--- Tópicos Disponíveis ---\n")

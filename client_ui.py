@@ -163,14 +163,14 @@ class App:
         self.root.after(5000, self.atualizacoes_periodicas)
 
     def _on_closing(self):
-        """Chamado quando a janela é fechada para garantir o fechamento da conexão."""
+        
         if self.usuario:
             self.registrar("INFO: Fechando conexão do usuário ao sair.")
             del self.usuario
         self.root.destroy()
 
     def carregar_topicos_assinados(self):
-        """Carrega os tópicos que o usuário assinou em sessões anteriores."""
+        
         arquivo_topicos = f"{self.usuario.nome}_topicos_assinados.txt"
         if os.path.exists(arquivo_topicos):
             try:
@@ -187,7 +187,7 @@ class App:
                 self.registrar(f"ERRO: Erro ao carregar tópicos assinados do arquivo: {e}")
 
     def salvar_topicos_assinados(self):
-        """Salva a lista de tópicos assinados em um arquivo local."""
+        
         if self.usuario:
             try:
                 with open(f"{self.usuario.nome}_topicos_assinados.txt", "w", encoding="utf-8") as f:
@@ -197,14 +197,14 @@ class App:
                 self.registrar(f"ERRO: Erro ao salvar tópicos assinados: {e}")
 
     def atualizacoes_periodicas(self):
-        """Função para atualizar listas de usuários e tópicos periodicamente."""
+        
         if self.usuario:
             self.atualizar_lista_usuarios()
             self.listar_topicos()
         self.root.after(5000, self.atualizacoes_periodicas)
 
     def criar_novo_topico_dialog(self):
-        """Abre uma janela de diálogo para o usuário criar um novo tópico."""
+        
         if not self.usuario:
             messagebox.showwarning("Aviso", "Por favor, entre com seu nome primeiro.")
             self.registrar("AVISO: Tentativa de criar tópico sem estar logado.")
@@ -238,7 +238,7 @@ class App:
         self.root.wait_window(dialog)
 
     def listar_topicos(self):
-        """Lista os tópicos disponíveis e atualiza os botões de assinar/visualizar."""
+        
         if not self.usuario:
             return
 
@@ -272,7 +272,7 @@ class App:
             tk.Button(frame, text=texto_botao, bg="#4da6ff", command=comando).pack(side=tk.LEFT, padx=5)
 
     def assinar_topico(self, topico):
-        """Assina um tópico."""
+        
         if not self.usuario:
             return
 
@@ -289,7 +289,7 @@ class App:
             self.registrar(f"ERRO: Erro ao assinar tópico: {e}")
 
     def visualizar_mural(self, topico):
-        """Exibe o mural de um tópico selecionado."""
+        
         if topico not in self.topicos_assinados:
             messagebox.showinfo("Informação", f"Você precisa assinar '{topico}' primeiro para visualizá-lo.")
             self.registrar(f"AVISO: Tentativa de visualizar tópico não assinado: {topico}.")
@@ -316,14 +316,14 @@ class App:
         self.entrada_mural.focus_set()
 
     def alternar_topico(self):
-        """Informa qual tópico está sendo visualizado (pode ser expandido para um seletor)."""
+        
         if self.topico_selecionado:
             messagebox.showinfo("Tópico Atual", f"Você está visualizando o tópico: '{self.topico_selecionado}'")
         else:
             messagebox.showinfo("Tópico Atual", "Nenhum tópico selecionado. Assine ou crie um.")
 
     def publicar_no_topico(self):
-        """Publica uma mensagem no tópico selecionado."""
+        
         if not self.usuario:
             return
 
@@ -352,7 +352,7 @@ class App:
         self.registrar(f"INFO: Mensagem publicada em '{topico}': {mensagem}")
 
     def atualizar_lista_usuarios(self):
-        """Atualiza a lista de usuários online."""
+        
         if not self.usuario:
             return
 
@@ -376,7 +376,7 @@ class App:
                 pass
 
     def selecionar_usuario(self, event):
-        """Define o destinatário da mensagem privada ao selecionar um usuário na lista."""
+        
         selecao = self.lista_usuarios.curselection()
         if selecao:
             usuario_selecionado = self.lista_usuarios.get(selecao[0])
@@ -388,7 +388,7 @@ class App:
             self._carregar_mensagens_privadas(usuario_selecionado)
 
     def _carregar_mensagens_privadas(self, usuario_para_carregar):
-        """Carrega e exibe as mensagens privadas de um usuário específico."""
+        
         self.caixa_mensagens_privadas.config(state='normal')
         self.caixa_mensagens_privadas.delete(1.0, tk.END)
 
@@ -400,7 +400,7 @@ class App:
         self.caixa_mensagens_privadas.yview(tk.END)
 
     def enviar_mensagem_privada(self):
-        """Envia uma mensagem privada para o usuário selecionado."""
+        
         if not self.usuario:
             return
 
@@ -435,20 +435,14 @@ class App:
         except Exception as e:
             self.registrar(f"ERRO: Erro inesperado ao enviar mensagem privada: {e}")
 
-    # --- Métodos para processar e exibir mensagens recebidas (THREAD-SAFE) ---
+    # --- Métodos para processar e exibir mensagens recebidas ---
 
     def mostrar_mensagem(self, msg):
-        """
-        Este é o callback chamado pela thread do consumidor.
-        Ele agenda a atualização da UI para a thread principal.
-        """
+        
         self.root.after(0, self._processar_e_exibir_mensagem_na_ui, msg)
 
     def _processar_e_exibir_mensagem_na_ui(self, msg):
-        """
-        Processa e exibe a mensagem recebida. Executado na thread principal da UI.
-        Também salva a mensagem em arquivo local para persistência.
-        """
+        
         if msg.startswith("PRIVADO:"):
             try:
                 _, remetente, mensagem_conteudo = msg.split(":", 2)
@@ -494,7 +488,7 @@ class App:
             self.registrar(f"INFO: MENSAGEM GERAL RECEBIDA: {msg}")
 
     def _adicionar_mensagem_mural(self, topico, mensagem):
-        """Adiciona mensagem ao mural (se o tópico estiver selecionado)."""
+        
         if self.topico_selecionado == topico:
             self.caixa_mural.config(state='normal')
             self.caixa_mural.insert(tk.END, mensagem)
@@ -502,19 +496,19 @@ class App:
             self.caixa_mural.yview(tk.END)
 
     def _adicionar_mensagem_privada_ui(self, mensagem):
-        """Adiciona mensagem à caixa de mensagens privadas."""
+        
         self.caixa_mensagens_privadas.config(state='normal')
         self.caixa_mensagens_privadas.insert(tk.END, mensagem + '\n')
         self.caixa_mensagens_privadas.config(state='disabled')
         self.caixa_mensagens_privadas.yview(tk.END)
 
     def registrar(self, msg):
-        """Registra mensagens no log da interface de forma thread-safe com timestamp."""
+        
         timestamp = time.strftime("[%Y-%m-%d %H:%M:%S]")
         self.root.after(0, self._adicionar_log, f"{timestamp} {msg}\n")
 
     def _adicionar_log(self, text):
-        """Método interno para adicionar texto ao log de forma segura."""
+        
         self.caixa_log.config(state='normal')
         self.caixa_log.insert(tk.END, text)
         self.caixa_log.config(state='disabled')

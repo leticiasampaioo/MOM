@@ -4,6 +4,7 @@ from requests.auth import HTTPBasicAuth
 import time
 
 class BrokerManager:
+    #Inicializa a conexão com RabbitMQ
     def __init__(self):
         self.connection = None
         self.channel = None
@@ -15,8 +16,9 @@ class BrokerManager:
         # Filtra as filas de tópico para não as confundir com usuários diretos
         self.users = {q for q in self.listar_usuarios() if not q.endswith('_topicos')}
 
+    #Estabelece a conexão com o RabbitMQ
     def _connect_to_rabbitmq(self):
-        """Estabelece a conexão com o RabbitMQ."""
+        
         if self.connection and self.connection.is_open:
             return
 
@@ -33,8 +35,9 @@ class BrokerManager:
             # Relevanta o erro para o chamador se a conexão inicial falhar
             raise ConnectionError(f"Falha ao conectar ao RabbitMQ: {e}") 
 
+    #Garante que a conexão e o canal estejam abertos. Tenta reconectar se necessário
     def _ensure_connected(self):
-        """Garante que a conexão e o canal estejam abertos. Tenta reconectar se necessário."""
+        
         if not self.connection or self.connection.is_closed or not self.channel or self.channel.is_closed:
             print("[BrokerManager] Conexão ou canal perdidos. Tentando reconectar...")
             try:
@@ -47,6 +50,7 @@ class BrokerManager:
                 return False
         return True
 
+    #Trata o erro PRECONDITION_FAILED (conflito de parâmetros)
     def _handle_precondition_failed(self, name, item_type="fila", durable_expected=True):
         """
         Lida com o erro PRECONDITION_FAILED, tentando excluir e recriar a fila/exchange.
@@ -73,10 +77,9 @@ class BrokerManager:
         if not self._ensure_connected():
             return "Erro: Conexão com RabbitMQ não estabelecida."
 
-        # Verifica se o usuário já existe no conjunto local (cache simples)
+        # Verifica se o usuário já existe no cache local
         if nome in self.users:
-            # Tenta declarar as filas para garantir que estejam duráveis, mesmo que o usuário já "exista"
-            # Isso é crucial para corrigir estados inconsistentes de filas não-duráveis
+            
             result_main = self._declare_queue_robustly(nome, "fila")
             result_topic = self._declare_queue_robustly(f"{nome}_topicos", "fila")
             
@@ -91,18 +94,16 @@ class BrokerManager:
 
         result_topic = self._declare_queue_robustly(f"{nome}_topicos", "fila")
         if "Conflito irrecuperável" in result_topic:
-            # Se a fila principal foi criada mas a de tópico falhou, tente reverter (opcionalmente)
+            # Se a fila principal foi criada mas a de tópico falhou, tente reverter 
             # ou apenas retorne o erro para que o usuário saiba que algo deu errado
             return f"Erro ao criar filas de tópico para '{nome}': {result_topic}"
 
         self.users.add(nome)
         return f"Usuário '{nome}' e suas filas criados/verificados com sucesso."
-
+        
+    #Tenta declarar uma fila/exchange e lida com PRECONDITION_FAILED.
     def _declare_queue_robustly(self, queue_name, item_type):
-        """
-        Tenta declarar uma fila/exchange e lida com PRECONDITION_FAILED.
-        Retorna uma mensagem de sucesso ou erro.
-        """
+     
         try:
             if item_type == "fila":
                 self.channel.queue_declare(queue=queue_name, durable=True)
@@ -119,7 +120,6 @@ class BrokerManager:
                 return f"Erro inesperado ao declarar {item_type} '{queue_name}': {e}"
         except Exception as e:
             return f"Erro geral ao declarar {item_type} '{queue_name}': {e}"
-
 
     def remover_usuario(self, nome):
         if not self._ensure_connected():
@@ -147,11 +147,11 @@ class BrokerManager:
         except Exception as e:
             print(f"[BrokerManager][ERRO] Erro ao remover fila de tópicos '{nome}_topicos': {e}")
             
-        self.users.remove(nome) # Remove do conjunto local, independente dos erros de exclusão no RabbitMQ
-        return f"Usuário '{nome}' e suas filas associadas removidos (ou tentativa de remoção)."
+        self.users.remove(nome) # Remove do conjunto local
+        return f"Usuário '{nome}' e suas filas associadas removidos."
 
     def listar_usuarios(self):
-        """Lista usuários ativos (representados por filas não-tópicas) via API HTTP."""
+        
         try:
             resp = requests.get(f"{self.api_url}/queues", auth=self.auth)
             resp.raise_for_status() 
@@ -193,7 +193,7 @@ class BrokerManager:
             return f"Erro ao remover tópico '{nome}': {e}"
 
     def listar_topicos(self):
-        """Lista tópicos (exchanges fanout não-internos) via API HTTP."""
+        
         try:
             resp = requests.get(f"{self.api_url}/exchanges", auth=self.auth)
             resp.raise_for_status() 
@@ -241,66 +241,3 @@ class BrokerManager:
 
     def __del__(self):
         self.close()
-
-# Exemplo de uso interativo (se este arquivo for executado diretamente)
-if __name__ == "__main__":
-    try:
-        broker = BrokerManager()
-    except ConnectionError as e:
-        print(f"Não foi possível iniciar o BrokerManager: {e}")
-        exit(1) # Sai se não conseguir conectar ao RabbitMQ
-
-    while True:
-        print("\n--- Menu do Broker Manager (Console) ---")
-        print("1. Criar Usuário")
-        print("2. Remover Usuário")
-        print("3. Listar Usuários")
-        print("4. Criar Tópico")
-        print("5. Remover Tópico")
-        print("6. Listar Tópicos")
-        print("7. Contar Mensagens na Fila")
-        print("8. Sair")
-        
-        escolha = input("Escolha uma opção: ")
-
-        if escolha == '1':
-            nome = input("Nome do usuário a criar: ")
-            print(broker.criar_usuario(nome))
-        elif escolha == '2':
-            nome = input("Nome do usuário a remover: ")
-            print(broker.remover_usuario(nome))
-        elif escolha == '3':
-            usuarios = broker.listar_usuarios()
-            print("\n--- Usuários Ativos ---")
-            if usuarios:
-                for user in usuarios:
-                    print(f"- {user}")
-            else:
-                print("Nenhum usuário ativo encontrado.")
-        elif escolha == '4':
-            nome = input("Nome do tópico a criar: ")
-            print(broker.criar_topico(nome))
-        elif escolha == '5':
-            nome = input("Nome do tópico a remover: ")
-            print(broker.remover_topico(nome))
-        elif escolha == '6':
-            topicos = broker.listar_topicos()
-            print("\n--- Tópicos Disponíveis ---")
-            if topicos:
-                for topico in topicos:
-                    print(f"- {topico}")
-            else:
-                print("Nenhum tópico encontrado.")
-        elif escolha == '7':
-            fila = input("Nome da fila para contar mensagens: ")
-            count = broker.contar_mensagens_fila(fila)
-            if count is not None:
-                print(f"Mensagens na fila '{fila}': {count}")
-            else:
-                print(f"Não foi possível contar mensagens na fila '{fila}'.")
-        elif escolha == '8':
-            print("Saindo do Broker Manager.")
-            broker.close()
-            break
-        else:
-            print("Opção inválida. Tente novamente.")
